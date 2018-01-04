@@ -11,11 +11,7 @@ function noOp() {}
  *  a single DOM Element.
  * @abstract
  */
-function Component() {
-  this._componentState = {
-    element: null
-  };
-}
+function Component() {}
 /**
  * Produce the DOM element to represent this component.
  * @abstract
@@ -32,7 +28,9 @@ Component.prototype._initialize = function _initialize() {
   //  enable other behaviors.
 };
 Component.prototype.run = function run() {
-  this._componentState.element = this._createElement();
+  this._componentState = {
+    element: this._createElement()
+  };
   this._initialize();
   return this.getElement();
 };
@@ -41,6 +39,7 @@ Component.prototype.getElement = function getElement() {
 };
 
 function ShipCell({ onClick = noOp } = {}) {
+  Component.call(this);
   /**
    * The state in which the cell is. One of "unknown", "miss", "hit".
    */
@@ -87,9 +86,49 @@ ShipCell.prototype._refresh = function _refresh() {
 };
 ShipCell.states = new Set([ 'unknown', 'hit', 'miss' ]);
 
+function GameBoard({ size }) {
+  Component.call(this);
+  this._cells = [];
+  this._columnNumber = size;
+  this._rowNumber = size;
+  // Note: we simulate a 2-dimensional array by using a single dimension and
+  //  simple multiplication operations.
+  const totalCells = this._columnNumber * this._rowNumber;
+  function handleCellClick() {
+    //TODO: Add a call to the game controller here. For now, we just switch
+    //  the clicked cell's state to "hit", as if the user scored a hit against
+    //  a ship.
+    this.setState('hit');
+  }
+  for (let i = 0; i < totalCells; i += 1) {
+    this._cells.push(new ShipCell({ onClick: handleCellClick }));
+  }
+}
+GameBoard.prototype = new Component();
+GameBoard.prototype._createElement = function createElement() {
+  const table = document.createElement('table');
+  table.className = 'gameboard';
+  // Generate the DOM elements representing rows and add our cells
+  //  to them:
+  for (let rowIndex = 0; rowIndex < this._rowNumber; rowIndex += 1) {
+    const row = document.createElement('tr');
+    for (let columnIndex = 0; columnIndex < this._columnNumber; columnIndex += 1) {
+      const cell = this._cells[rowIndex * this._columnNumber + columnIndex];
+      row.appendChild(cell.run());
+    }
+    table.appendChild(row);
+  }
+  return table;
+};
+GameBoard.prototype.getCell = function getCell(row, column) {
+  const index = row * this._columnNumber + column;
+  if (index >= 0 && index < this._cells.length) {
+    return this._cells[index];
+  } else {
+    throw new Error('Invalid cell address: row = ' + row + ', column = ' + column);
+  }
+};
+
 const boardContainer = document.getElementById('gameboardContainer');
-const cell = new ShipCell();
-boardContainer.appendChild(cell.run());
-setTimeout(function() {
-  cell.setState('hit');
-}, 3000);
+const board = new GameBoard({ size: 10 });
+boardContainer.appendChild(board.run());
