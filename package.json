@@ -1,6 +1,6 @@
 {
   "name": "warsawjs-workshop-15-battleships",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "a pilot game of Battleship for WarsawJS Workshop 15",
   "main": "index.js",
   "scripts": {
