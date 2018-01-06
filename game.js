@@ -118,7 +118,7 @@ class BoardCellComponent extends Component {
 BoardCellComponent.states = new Set([ 'unknown', 'hit', 'miss' ]);
 
 class GameBoardComponent extends Component {
-  constructor({ size, cellClickHandler }) {
+  constructor({ boardNumber, size, cellClickHandler }) {
     super();
     this._cells = [];
     this._columnNumber = size;
@@ -129,7 +129,7 @@ class GameBoardComponent extends Component {
       for (let columnIndex = 0; columnIndex < this._columnNumber; columnIndex += 1) {
         this._cells.push(new BoardCellComponent({
           clickHandler: cellClickHandler,
-          location: { row: rowIndex, column: columnIndex }
+          location: { boardNumber: boardNumber, row: rowIndex, column: columnIndex }
         }));
       }
     }
@@ -159,12 +159,50 @@ class GameBoardComponent extends Component {
       throw new Error('Invalid cell address: row = ' + row + ', column = ' + column);
     }
   }
+}
 
-  //TODO: Move this observer function to the top-level Game component!
+class GameComponent extends Component {
+  /**
+   * Construct a new GameComponent.
+   * @param {Object} params
+   * @param {number} params.boardCount - The number of boards to create.
+   * @param {number} params.boardSize - The width/height of each board.
+   * @param {function} params.cellClickHandler - The handler to pass to cells for invoking upon clicking them.
+   * @param {function} params.resetHandler - A function to call when the user elects to reset the game.
+   */
+  constructor({ boardCount = 2, boardSize = 10, cellClickHandler, resetHandler }) {
+    super();
+    this._boards = [];
+    for (let boardNumber = 0; boardNumber < boardCount; boardNumber += 1) {
+      this._boards.push(new GameBoardComponent({ boardNumber, size: boardSize, cellClickHandler }));
+    }
+    //TODO: Add a reset button.
+  }
+
+  _createElement() {
+    const ownElement = document.createElement('div');
+    ownElement.className = 'gameComponent';
+    const boardContainer = document.createElement('div');
+    boardContainer.className = 'boardContainer';
+    ownElement.appendChild(boardContainer);
+    this._boards.forEach(function(board) {
+      boardContainer.appendChild(board.run());
+    });
+    return ownElement;
+  }
+
+  /**
+   * Observer function that receives changes (events) from the model.
+   */
   modelObserver(type, data) {
+    let board;
     switch (type) {
       case 'shotFired':
-        this.getCell(data.row, data.column).setState(data.result);
+        board = this._boards[data.boardNumber];
+        if (!board) {
+          throw new Error('Board view not found: ' + data.boardNumber);
+        }
+        board.getCell(data.row, data.column).setState(data.result);
         break;
       default:
         // We do not handle unknown model events; they do not interest us.
@@ -283,20 +321,26 @@ class GameModel {
   /**
    * Construct a new model of the game.
    * @param {Object} params
-   * @param {BoardModel} params.board - The board model to use for simulating the sole board of ships. It must have some ships already on it, as we do not fill it afterwards.
+   * @param {BoardModel[]} params.boards - The board models to use for simulating the sole board of ships. Exactly 2 must be passed. Each must have some ships already on it, as we do not fill it afterwards.
    */
-  constructor({ board }) {
-    this._board = board;
+  constructor({ boards }) {
+    // Note: boards are indexed [0] and [1], which corresponds to boardNumber
+    //  passed in methods.
+    this._boards = boards;
     this._observers = new Set();
     //TODO: Add logic for turn handling, 2 boards, and victory/loss conditions.
   }
 
-  shootAt(row, column) {
-    const shootingResult = this._board.shootAt(row, column);
+  shootAt(boardNumber, row, column) {
+    const board = this._boards[boardNumber];
+    if (!board) {
+      throw new Error('Board number invalid: ' + boardNumber);
+    }
+    const shootingResult = board.shootAt(row, column);
     // Publish the shooting result for our observers:
     // (This feels a lot like .NET MVC!)
     if (shootingResult) {
-      this._publishChange('shotFired', { row, column, result: shootingResult });
+      this._publishChange('shotFired', { boardNumber, row, column, result: shootingResult });
     } else {
       // Do nothing - the board reports "undefined" if the click had no effect,
       //  i.e. the field must have been used already.
@@ -337,19 +381,20 @@ class GameController {
   }
 
   cellClickHandler(location) {
-    this._model.shootAt(location.row, location.column);
+    this._model.shootAt(location.boardNumber, location.row, location.column);
   }
 }
 
 // ### Application composition and init ###
 
 // Initialize models:
-const boardModel = new BoardModel({ size: 10 });
-const model = new GameModel({ board: boardModel });
+const board1 = new BoardModel({ size: 10 });
+const board2 = new BoardModel({ size: 10 });
+const model = new GameModel({ boards: [ board1, board2 ] });
 // Create the controller, telling it to route commands to the model:
 const controller = new GameController({ model });
 // Make the game view and bind it to the controller:
-const view = new GameBoardComponent({
+const view = new GameComponent({
   size: 10,
   // Bind the method to the controller (or "this" would be undefined).
   cellClickHandler: controller.cellClickHandler.bind(controller)
@@ -359,5 +404,5 @@ const view = new GameBoardComponent({
 model.addObserver(view.modelObserver.bind(view));
 
 // Actually put our game in the DOM.
-const boardContainer = document.getElementById('gameboardContainer');
-boardContainer.appendChild(view.run());
+const gameContainer = document.getElementById('gameContainer');
+gameContainer.appendChild(view.run());
