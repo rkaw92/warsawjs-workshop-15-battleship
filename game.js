@@ -295,7 +295,12 @@ class GameModel {
     const shootingResult = this._board.shootAt(row, column);
     // Publish the shooting result for our observers:
     // (This feels a lot like .NET MVC!)
-    this._publishChange('shotFired', { row, column, result: shootingResult });
+    if (shootingResult) {
+      this._publishChange('shotFired', { row, column, result: shootingResult });
+    } else {
+      // Do nothing - the board reports "undefined" if the click had no effect,
+      //  i.e. the field must have been used already.
+    }
   }
 
   addObserver(observerFunction) {
