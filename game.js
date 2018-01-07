@@ -2,6 +2,13 @@
 
 // ### Base classes ###
 
+class PlayerError extends Error {
+  constructor(message) {
+    super('Player error: ' + message);
+    this.name = 'PlayerError';
+  }
+}
+
 /**
  * A Component is a building block for widgets. It corresponds to and wraps
  *  a single DOM Element.
@@ -107,7 +114,7 @@ class BoardCellComponent extends Component {
         newContent = 'X';
         break;
       case 'miss':
-        newContent = '.';
+        newContent = '~';
         break;
     }
     this.getElement().textContent = newContent;
@@ -161,6 +168,32 @@ class GameBoardComponent extends Component {
   }
 }
 
+class TurnIndicatorComponent extends Component {
+  constructor() {
+    super();
+    this._turn = 0;
+  }
+
+  _createElement() {
+    const indicator = document.createElement('div');
+    indicator.className = 'turnIndicatorComponent';
+    return indicator;
+  }
+
+  _refresh() {
+    this.getElement().textContent = 'Player' + (this._turn + 1);
+  }
+
+  _initialize() {
+    this._refresh();
+  }
+
+  setTurn(turn) {
+    this._turn = turn;
+    this._refresh();
+  }
+}
+
 class GameComponent extends Component {
   /**
    * Construct a new GameComponent.
@@ -176,12 +209,17 @@ class GameComponent extends Component {
     for (let boardNumber = 0; boardNumber < boardCount; boardNumber += 1) {
       this._boards.push(new GameBoardComponent({ boardNumber, size: boardSize, cellClickHandler }));
     }
+    this._turnIndicator = new TurnIndicatorComponent();
     //TODO: Add a reset button.
   }
 
   _createElement() {
+    // Create the top-level game component element:
     const ownElement = document.createElement('div');
     ownElement.className = 'gameComponent';
+    // Add the turn indicator to display whose turn it is:
+    ownElement.appendChild(this._turnIndicator.run());
+    // Add the actual playing boards for all sides:
     const boardContainer = document.createElement('div');
     boardContainer.className = 'boardContainer';
     ownElement.appendChild(boardContainer);
@@ -204,6 +242,8 @@ class GameComponent extends Component {
         }
         board.getCell(data.row, data.column).setState(data.result);
         break;
+      case 'turnChanged':
+        this._turnIndicator.setTurn(data.turn);
       default:
         // We do not handle unknown model events; they do not interest us.
         return;
@@ -315,7 +355,6 @@ class BoardModel {
  * The GameModel is the top-level model for the game of Battleships. It keeps
  *  the state of the game (by encapsulating instances of BoardModel) and allows
  *  one to run behaviors on the game - namely, to shoot ships.
- * NOTE: A single-player variant only is currently implemented.
  */
 class GameModel {
   /**
@@ -328,10 +367,20 @@ class GameModel {
     //  passed in methods.
     this._boards = boards;
     this._observers = new Set();
+    /**
+     * Turn: whose turn is it? "0" means the owner of board 0 is attacking the
+     *  other board (1).
+     * @type {number}
+     */
+    this._turn = 0;
     //TODO: Add logic for turn handling, 2 boards, and victory/loss conditions.
   }
 
   shootAt(boardNumber, row, column) {
+    if (boardNumber === this._turn) {
+      throw new PlayerError('It is not your turn to fire on this board');
+      return;
+    }
     const board = this._boards[boardNumber];
     if (!board) {
       throw new Error('Board number invalid: ' + boardNumber);
@@ -341,10 +390,17 @@ class GameModel {
     // (This feels a lot like .NET MVC!)
     if (shootingResult) {
       this._publishChange('shotFired', { boardNumber, row, column, result: shootingResult });
+      // The action was performed - advance the turn counter!
+      this._nextTurn();
     } else {
       // Do nothing - the board reports "undefined" if the click had no effect,
       //  i.e. the field must have been used already.
     }
+  }
+
+  _nextTurn() {
+    this._turn = (this._turn + 1) % this._boards.length;
+    this._publishChange('turnChanged', { turn: this._turn });
   }
 
   addObserver(observerFunction) {
@@ -381,7 +437,13 @@ class GameController {
   }
 
   cellClickHandler(location) {
-    this._model.shootAt(location.boardNumber, location.row, location.column);
+    try {
+      this._model.shootAt(location.boardNumber, location.row, location.column);
+    } catch (error) {
+      if (error.name === 'PlayerError') {
+        alert(error.message);
+      }
+    }
   }
 }
 
